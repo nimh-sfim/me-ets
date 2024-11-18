@@ -1,21 +1,24 @@
 import scipy as sp
 import numpy as np
-
+import xarray as xr
+from itertools import combinations
+import pandas as pd
 # Adapted from code originally provided by Josh Faskowizt
 import scipy as sp
 def get_ets(ts1, ts2=None, normalize=False): 
-    # make edge time series
-    # input:     
-    #    timeseies, size: time x channel. It can be a numpy.array or an xarray.DataArray.
-    #     if the latter, then we will try to use the index to infer roi names and then
-    #     edge names
-    # output:    
-    #    edge timeseries, size time x |channels*(channels-1)/2|
-    # If only one ts is provided, we assume we are doing that to itself
+    """Creates edge timeseries
+    input:     
+        timeseies, size: time x channel. It can be a numpy.array or an xarray.DataArray.
+         if the latter, then we will try to use the index to infer roi names and then
+         edge names
+    output:    
+        edge timeseries, size time x |channels*(channels-1)/2|
+     If only one ts is provided, we assume we are doing that to itself
+    """
     roi_names  = None
     if isinstance(ts1,xr.core.dataarray.DataArray):
         if 'roi' in ts1.dims:
-            roi_names = list(roi_ts.sel(te=32.2).roi.values)
+            roi_names = list(ts1.coords['roi'].values)
         ts1 = ts1.values
     if ts2 is None:
         ts2 = ts1
@@ -49,3 +52,6 @@ def get_ets(ts1, ts2=None, normalize=False):
     else:
         ets.name = 'ETS (As is)'
     return ets
+
+def root_sum_of_squares(x):
+    return np.sqrt(np.sum(x**2))
