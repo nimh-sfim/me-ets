@@ -22,7 +22,7 @@ def get_neural_event_hv_annots(schedule2evonsets_dict,SCH,alpha=0.5):
              hv.VSpans((list(schedule2evonsets_dict[(SCH,'MUSI')]/2),list(schedule2evonsets_dict[(SCH,'MUSI')]/2+2)),label='MUSI').opts(color=TASK_COLORS['MUSI'], alpha=alpha, muted_alpha=0)
     return annots
 
-def get_hrf_event_onsets_offsets(SCH,TAP_LABEL,hrf_thr=0.2):
+def get_hrf_event_onsets_offsets(SCH,TAP_LABEL,tr_secs,hrf_thr=0.2):
     wavs = pd.DataFrame(columns=TASKS)
     task_hrf_onsets, task_hrf_offsets = {},{}
     # Load Task HRF simulated
@@ -32,13 +32,12 @@ def get_hrf_event_onsets_offsets(SCH,TAP_LABEL,hrf_thr=0.2):
         else:
             wavs[task] = np.loadtxt(osp.join(SCHEDULES_DIR,f'model_timing.{task}.{SCH}.SPMG1.1D'), comments='#')
         # Compute reponse onset and offset
-        task_hrf_onsets[task]  = [i-1 for i in wavs[task][(wavs[task]>.2).astype(int).diff() == 1].index.to_list()]
-        task_hrf_offsets[task] = [i+1 for i in wavs[task][(wavs[task]>.2).astype(int).diff() == -1].index.to_list()]
+        task_hrf_onsets[task]  = [(i-1)*tr_secs for i in wavs[task][(wavs[task]>.2).astype(int).diff() == 1].index.to_list()]
+        task_hrf_offsets[task] = [(i+1)*tr_secs for i in wavs[task][(wavs[task]>.2).astype(int).diff() == -1].index.to_list()]
     return task_hrf_onsets, task_hrf_offsets
     
-def get_hrf_event_hv_annots(schedule2evonsets_dict,SCH,TAP_LABEL,hrf_thr=0.2,alpha=0.5):
-    task_hrf_onsets, task_hrf_offsets = get_hrf_event_onsets_offsets(SCH,TAP_LABEL,hrf_thr)
-    
+def get_hrf_event_hv_annots(schedule2evonsets_dict,SCH,TAP_LABEL,tr_secs,hrf_thr=0.2,alpha=0.5):
+    task_hrf_onsets, task_hrf_offsets = get_hrf_event_onsets_offsets(SCH,TAP_LABEL,tr_secs,hrf_thr)
     # Plot the annotations
     annots = hv.VSpans((task_hrf_onsets['FTAP'],task_hrf_offsets['FTAP']), label='FTAP').opts(color=TASK_COLORS['FTAP'], alpha=alpha, muted_alpha=0) * \
              hv.VSpans((task_hrf_onsets['BMOT'],task_hrf_offsets['BMOT']), label='BMOT').opts(color=TASK_COLORS['BMOT'], alpha=alpha, muted_alpha=0) * \
