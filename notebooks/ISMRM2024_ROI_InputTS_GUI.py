@@ -13,67 +13,16 @@
 #     name: me-ets_2024a
 # ---
 
-# +
-import hvplot.pandas 
-import hvplot.xarray
-from bokeh.models import GlyphRenderer, LinearAxis, LinearScale, Range1d
-from tqdm import tqdm
-import holoviews as hv
-from holoviews import opts, dim
-from holoviews import opts
-import panel as pn
-pn.extension()
-
-import xarray as xr
-import pandas as pd
-
-import sys
-sys.path.append('../python/')
-
-import os.path as osp
-
-import nibabel as nib
-import pandas as pd
-import numpy as np
-import statsmodels.api as sm
-from scipy.stats import linregress
-from utils.plotting import carpet_plot_roits, get_hrf_event_onsets_offsets, get_neural_event_hv_annots, get_hrf_event_hv_annots
-from sfim_lib.plotting.fc_matrices import nw_color_map
-from nilearn.maskers import NiftiLabelsMasker
-
-from bokeh.models.formatters import DatetimeTickFormatter
-
-formatter = DatetimeTickFormatter(minutes = '%Mmin:%Ssec')
-# -
-
-from nilearn.plotting import plot_roi
-import matplotlib.pyplot as plt
-
-# +
-from bokeh.palettes import Reds3
-from bokeh.models import Span, BoxAnnotation
-from numpy import arange, linspace, pi, sin
-
-from bokeh.layouts import column
-from bokeh.models import (CustomJS, LinearAxis, Range1d, Select,
-                          WheelZoomTool, ZoomInTool, ZoomOutTool)
-from bokeh.models import BasicTickFormatter
-
-from bokeh.palettes import Sunset6, Reds3, Reds8, Blues8
-from bokeh.plotting import figure, show
-# -
-
-import seaborn as sns
-import hvplot.pandas
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-from utils.plotting import TASK_COLORS
-
-
-
-
-
-
+# ***
+# # Description
+#
+# This notebook loads ROI timeseries for E01, E02, and E03 following both basic pre-processing and MEICA denoising.
+#
+# It then creates two dashboards to explore them as carpet plots. 
+#
+# Dashboard one allows the exploration of data at the individual scan level
+#
+# Dashboard two allows the exploration of data at the group level, as a function of task schedule.
 
 # + panel-layout={"width": 100, "height": 0, "visible": true}
 import sys
