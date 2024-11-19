@@ -2,6 +2,7 @@ import holoviews as hv
 from .basics import TASK_COLORS, TASKS, DATASET, SCHEDULES_DIR,  get_paradigm_info
 import pandas as pd
 import numpy  as np
+import xarray as xr
 import panel as pn
 import hvplot.pandas
 import holoviews as hv
@@ -10,7 +11,7 @@ import os.path as osp
 from sfim_lib.plotting.fc_matrices import nw_color_map
 from bokeh.io import show
 scan2schedule_dict, scan2hand_dict, schedule2evonsets_dict, _ = get_paradigm_info(DATASET)
-
+from .ets import root_sum_of_squares
 from bokeh.models.formatters import DatetimeTickFormatter
 formatter = DatetimeTickFormatter(minutes = '%Mmin:%Ssec')
 
@@ -46,6 +47,281 @@ def get_hrf_event_hv_annots(schedule2evonsets_dict,SCH,TAP_LABEL,tr_secs,hrf_thr
              hv.VSpans((task_hrf_onsets['MUSI'],task_hrf_offsets['MUSI']), label='MUSI').opts(color=TASK_COLORS['MUSI'], alpha=alpha, muted_alpha=0)
     return annots
 
+
+def _process_roi_data(data,data_type,tr_secs,x_coord_name,y_coord_name):
+    """ 
+    This function help go from xarray to dataframes that are ready for heatmap plotting. This function is intended to be used
+    only at the roi level [Not for edges].
+
+    Inputs
+    ======
+    data: xr.DataArray with roi timeseries
+    data_type: BOLD or Neural
+    ts_secs: tr in seconds
+    x_coord_name: name of the coordinate that should be the x axis. (e.g., tr, time, etc.)
+    y_coord_name: name of the coordinate that should be the y axis. (e.g., roi, ROI, etc.)
+
+    Returns
+    =======
+    data: same as input but re-sorted by network membership
+    data_df: tidy version of the input data.
+    nw_names: network names.
+    schedule: task schedule.
+    tap_label: task hand.
+    x_coord_name: new name for the coordinate to be used in the X axis
+    y_coord_name: new name for the coordinate to be used in the Y axis
+    roi_name_2_roi_idx: dictionary to go from ROI_id to ROI_Name
+    """
+
+    # Basic checks on the input
+    assert isinstance(data,xr.DataArray), "++ [cplot_roits] ERROR: data is not an instance of xr.DataArray"
+    assert 'schedule' in data.attrs,      "++ [cplot_roits] ERROR: schedule information not available as an attribute"
+    assert 'tap_label' in data.attrs,     "++ [cplot_roits] ERROR: tap_label information not available as an attribute"
+    assert y_coord_name in data.coords, "++ [cplot_roits] ERROR: %s is not a coordinate in the input data" % y_coord_name
+    assert x_coord_name in data.coords,  "++ [cplot_roits] ERROR: %s is not a coordinate in the input data" % x_coord_name
+
+    # The data might be organized according to NW within each hemisphere. This is a problem for this code. To resolve
+    # it is key to first ensure that the ROIs are sorted according to network name
+    data             = data.copy()
+    data_rois_idx    = pd.MultiIndex.from_tuples([tuple(r.split('_',2)) for r in data.coords[y_coord_name].values],names=['Hemisphere','Network','ROI_Name'])
+    data_rois_idx, _ = data_rois_idx.sortlevel('Network')
+    new_rois_order   = ['_'.join(r) for r in data_rois_idx]
+    data             = data.sel(roi=new_rois_order)
+
+    # Once data is sorted, we can now go ahead and extract network names, etc...
+    nw_names         = list(data_rois_idx.get_level_values('Network').unique())
+    num_nws          = len(nw_names)
+
+    # Extract basic information
+    Nrois = data.coords[y_coord_name].shape[0]
+    Nacqs = data.coords[x_coord_name].shape[0]
+    roi_name_2_roi_idx = {roi:i for i,roi in enumerate(data.coords[y_coord_name].values)}
+
+    # Go from TR to secs
+    if tr_secs is not None:
+        new_time_coord_values = [acq * tr_secs for acq in data.coords[x_coord_name].values]
+        data.coords[x_coord_name] = new_time_coord_values
+        data = data.rename({x_coord_name:'Time [sec]'})
+        x_coord_name = 'Time [sec]'
+
+    # Extract schedule and tap_label
+    schedule        = data.schedule
+    tap_label       = data.tap_label
+
+    # Go to tidy data format
+    data_df         = data.to_dataframe()
+    if 'dt' in data_df.columns:
+        data_df.drop('dt',axis=1,inplace=True)
+    data_df.columns = [data_type]
+
+    # Re-index data with multi-index (Hemi, Nw, ROI)
+    orig_idx      = pd.MultiIndex.from_tuples([tuple(r.split('_',2)) for r in data_df.index.get_level_values(y_coord_name)],names=['Hemisphere','Network','ROI_Name'])
+    data_df       = data_df.reset_index()
+    data_df.index = orig_idx
+
+    data_df[y_coord_name] = [roi_name_2_roi_idx[i] for i in list(data_df[y_coord_name].values)]
+    return data, data_df, nw_names, schedule, tap_label, x_coord_name,y_coord_name, roi_name_2_roi_idx
+
+def _get_roits_schedule_avg(data, schedule, denoising, model=None, criteria=None, 
+                            only_negatives=False, only_positives=False, 
+                            rwin_dur=None, rwin_mode='mean',
+                            values_cap = None):
+    """
+    This function will create a schedule average for ROI timseries. Its ouput can then be provided to the plotting function.
+
+    Inputs
+    ------
+    data: xr.Dataset
+    schedule: selected schedule
+    denoising: selected denoiing method
+    model: selected model (for PFM outputs only)
+    criteria: selected criteria (for PFM outputs only)
+    only_negatives: remove positive values prior to averaging across scans
+    only_positives: remove negative values prior to averaging across scans
+    rwin_dur: duration for temporal rolling window to be applied prior to averaging across scans
+    rwin_mode: function to summarize data when doing rolling window [default='mean', options='mean','median','min','max'].
+    values_cap: cap value to be applied prior to averaging across scans. All values greater than the cap value will be set to the cap value
+    Returns
+    -------
+    output: xr.DataArray with the averaged data.
+    """
+    # Check if data is PFM input or output
+    if (model is None) | (criteria is None):
+        pfm_outputs = False
+    else:
+        pfm_outputs = True
+        
+    # Select dataarrays of interest from dataset provided as input
+    if pfm_outputs:
+        selected_dataarrays = data.filter_by_attrs(schedule=schedule, denoising=denoising)
+    else:
+        selected_dataarrays = data.filter_by_attrs(schedule=schedule, denoising=denoising, model=model, criteria=criteria)
+    
+    # Capping input data (if requested)
+    if values_cap is not None:
+        for da_name,da in selected_dataarrays.items():
+            selected_dataarrays[da_name] = xr.where(da < -values_cap , -values_cap, da)
+            selected_dataarrays[da_name] = xr.where(da > values_cap ,  values_cap, da)
+
+    # Remove positive values (if requested) & stack in preparation for averaging
+    stacked_dataarray = xr.concat([selected_dataarrays[name] for name in selected_dataarrays.data_vars], dim='scan')
+    
+    if only_negatives:
+        stacked_dataarray = xr.concat([xr.where(da > 0, 0, da) for da in selected_dataarrays.values()], dim='scan')
+    if only_positives:
+        stacked_dataarray = xr.concat([xr.where(da < 0, 0, da) for da in selected_dataarrays.values()], dim='scan')
+    
+    stacked_dataarray.name = 'stacked'
+
+    # Apply rolling window (if requested)
+    if (rwin_dur is not None) and (rwin_dur > 1):
+        if rwin_mode == 'mean':
+            stacked_dataarray = stacked_dataarray.rolling(tr=rwin_dur, center=False).mean()
+        if rwin_mode == 'median':
+            stacked_dataarray = stacked_dataarray.rolling(tr=rwin_dur, center=False).median()
+        if rwin_mode == 'min':
+            stacked_dataarray = stacked_dataarray.rolling(tr=rwin_dur, center=False).min()
+        if rwin_mode == 'max':
+            stacked_dataarray = stacked_dataarray.rolling(tr=rwin_dur, center=False).max()
+        stacked_dataarray = stacked_dataarray.fillna(0)
+    
+    # Average all scans part of the selected schedule
+    mean_dataarray = stacked_dataarray.mean(dim='scan')
+    mean_dataarray.attrs['schedule']  = schedule
+    mean_dataarray.attrs['tap_label'] = 'LTAP'
+    return mean_dataarray
+    
+def create_roits_figure(data,data_type,tr_secs,
+                      x_coord_name,y_coord_name,
+                      width=2000, height=500, cmap='RdBu_r', 
+                      vmin=-0.02, vmax=0.02, 
+                      rssts_min=None, rssts_max=None, 
+                      roits_min=None, roits_max=None,
+                      time_segment='All', hrf_thr=0.2):
+    """
+    Creates a figure with three plots: 
+    (1) A carpet plot of the ROI timeseries sorted and organized by network.
+    (2) Timeseries or RSS across all ROIs included in the carpet plot.
+    (3) Trace of RSS across a given scan segment for all ROIs in the plot.
+
+    Inputs:
+    -------
+    data: xr.DataArray with the data to be plotted.
+    data_type: BOLD or Neural
+    x_coord_name: name of coordinate to be used as X-axis.
+    y_coord_name: name of coordinate to be used as Y-axis.
+    width: total figure width
+    height: total figure height
+    cmap: colormap for the carpet plot
+    vmin,vmax: min and max values for the carplet plot colorbar
+    rssts_min, rssts_max: min and max values for the RSS timeseries
+    roits_min, roits_max: min and max values for the ROI timeseries
+    time_segment:
+    hrf_thr: threshold for task HRF
+    
+    Returns:
+    --------
+    out_figure: hvplot figure.
+    """
+    # Extract basic information
+    # =========================
+    data, data_df, nw_names, schedule, tap_label,x_coord_name,y_coord_name,roi_name_2_roi_idx  = _process_roi_data(data,data_type,tr_secs,x_coord_name,y_coord_name)
+    Nrois = data.coords[y_coord_name].shape[0]
+    Nacqs = data.coords[x_coord_name].shape[0]
+    
+    # Prepare network related annotations
+    # ===================================
+    # 1. Yticks and Yticklabels
+    num_nws       = len(nw_names)
+    data_rois_idx = pd.MultiIndex.from_tuples([tuple(r.split('_',2)) for r in data.coords[y_coord_name].values],names=['Hemisphere','Network','ROI_Name'])
+    rois_per_nw  = data_rois_idx.get_level_values('Network').value_counts().to_dict()
+    rois_per_nw  = np.array([rois_per_nw[nw] for nw in nw_names])
+    net_edges    = [0]+ list(rois_per_nw.cumsum())                                    # Position of horizontal dashed lines for nw delineation
+    yticks       = [int(i) for i in net_edges[0:-1] + np.diff(net_edges)/2]           # Position of nw names
+    yticks_info  = list(tuple(zip(yticks, nw_names)))
+    # 2. Colored segments
+    nw_col_segs = hv.Segments((tuple(-0.5*np.ones(num_nws)),
+                                   tuple(np.array(net_edges[:-1])-0.5),
+                                   tuple(-0.5*np.ones(num_nws)),
+                                   tuple(np.array(net_edges[1:])-0.5), nw_names), vdims='Networks').opts(cmap=nw_color_map, color=dim('Networks'), line_width=10,show_legend=False)
+    # 3. Dashed horizontal lines delineating networks
+    for x in net_edges:
+            nw_col_segs  = nw_col_segs  * hv.HLine(x-.5).opts(line_color='k',line_dash='dashed', line_width=0.5)
+
+    # Prepare task-related annotations
+    # ================================
+    if data_type == 'BOLD':
+        task_annot = get_hrf_event_hv_annots(schedule2evonsets_dict,schedule,tap_label,tr_secs,hrf_thr=0.2,alpha=0.25).opts(ylim=(0,Nrois))
+    else:
+        task_annot = get_neural_event_hv_annots(schedule2evonsets_dict,schedule,tap_label,alpha=0.25).opts(ylim=(0,Nrois))
+
+    # Construct Gridspec Elements
+    # ===========================
+    # Carpet Plot
+    # -----------
+    cplot = data_df.reset_index().hvplot.heatmap(x=x_coord_name,y=y_coord_name,C=data_type, width=int(0.8*width), height=int(0.8 * height),
+                                         cmap=cmap, hover_cols=['Hemisphere','Network','ROI_Name'],
+                                         ylabel='ROIs [%s]' % str(Nrois), yticks=yticks_info, 
+                                         clim=(vmin,vmax)).opts(xrotation=90,colorbar_opts={'title':data_type})
+    cplot = cplot * nw_col_segs
+    cplot = cplot * task_annot
+    cplot.opts(xlim=(-0.5,data_df[x_coord_name].max()),ylim=(0,Nrois))
+    # RSS TS
+    # ------
+    rssts = data_df.groupby(x_coord_name).agg(root_sum_of_squares)[data_type]
+    rssts.name = 'RSS TS'
+    rssts = pd.DataFrame(rssts).reset_index()
+    # Extract min and max if not provided
+    if rssts_min is None:
+        rssts_min = rssts['RSS TS'].min()
+    if rssts_max is None:
+        rssts_max = rssts['RSS TS'].max()
+    rssts = rssts.hvplot(x=x_coord_name, y='RSS TS', c='k', ylim=(rssts_min,rssts_max),width=int(0.8*width), height=int(0.4 * height)) * task_annot.opts(show_legend=False)
+
+    # ROI TS
+    # ------
+    # Get onset and offsets per task
+    if data_type == 'BOLD':
+        task_onsets, task_offsets = get_hrf_event_onsets_offsets(schedule,tap_label,tr_secs,hrf_thr)
+    else:
+        task_onsets, task_offsets = {},{}
+        for task in TASKS:      
+            task_onsets[task]  = schedule2evonsets_dict[(this_scan_roits_xr.schedule,task)]/2
+            task_offsets[task] = task_onsets[task]+2
+    # Get trace for the full scan            
+    roits = data_df.groupby(y_coord_name).agg(root_sum_of_squares)[data_type]
+    roits.name = 'ROI TS [All]'
+    roits = pd.DataFrame(roits).reset_index()
+    
+    # Get task specific traces 
+    for task in TASKS:
+        sel_acqs = list(np.concatenate([np.arange(i-1,j+1) for i,j in zip(task_onsets[task],task_offsets[task])]))
+        roits['ROI TS ['+task+']'] = data_df[data_df[x_coord_name].isin(sel_acqs)].groupby(y_coord_name).agg(root_sum_of_squares)[data_type]
+        
+    # Extract min and max if not provided
+    if roits_min is None:
+        roits_min = roits['ROI TS ['+time_segment+']'].min()*0.95
+    if roits_max is None:
+        roits_max = roits['ROI TS ['+time_segment+']'].max()*1.05
+    roi_idx_2_hemi  = {v:k.split('_')[0] for k,v in roi_name_2_roi_idx.items()}
+    roi_idx_2_nw    = {v:k.split('_')[1] for k,v in roi_name_2_roi_idx.items()}
+    roi_idx_2_name  = {v:k.split('_',2)[2] for k,v in roi_name_2_roi_idx.items()}
+    roits['Hemisphere'] = [roi_idx_2_hemi[i] for i in roits['roi'].values]
+    roits['Network']    = [roi_idx_2_nw[i] for i in roits['roi'].values]
+    roits['ROI_Name']   = [roi_idx_2_name[i] for i in roits['roi'].values]
+    roits = roits.hvplot.scatter(y=y_coord_name, x='ROI TS ['+time_segment+']', c='Network', cmap=nw_color_map, hover_cols=['Network','Hemisphere','ROI_Name'], xlim=(roits_min,roits_max), ylim=(0,Nrois), legend=False, height=int(0.83 * height), width=int(0.10 * width)).opts(toolbar='above')
+
+    # Construct Final Figure
+    # ======================
+    #out_figure = pn.Row((cplot+rssts).cols(1),pn.Column(roits,pn.Spacer(styles=dict(background='green'))))
+    out_figure = pn.Row(pn.Column(cplot,rssts),pn.Column(roits,pn.Spacer(styles=dict(background='green'))))
+    return out_figure    
+    
+    
+
+# ===================
+# OLD STUFF TO REMOVE
+# ===================
 def cplot_roits(data,data_type,tr_secs,y_coord_name='roi',x_coord_name='tr', 
                 vmin=None,vmax=None, cmap='RdBu_r', cplot_width=1800, cplot_height=500,
                 show_nw_annot=True):
