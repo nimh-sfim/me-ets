@@ -15,12 +15,12 @@ from .ets import root_sum_of_squares
 from bokeh.models.formatters import DatetimeTickFormatter
 formatter = DatetimeTickFormatter(minutes = '%Mmin:%Ssec')
 
-def get_neural_event_hv_annots(schedule2evonsets_dict,SCH,alpha=0.5):
-    annots = hv.VSpans((list(schedule2evonsets_dict[(SCH,'FTAP')]/2),list(schedule2evonsets_dict[(SCH,'FTAP')]/2+2)),label='FTAP').opts(color=TASK_COLORS['FTAP'], alpha=alpha, muted_alpha=0) * \
-             hv.VSpans((list(schedule2evonsets_dict[(SCH,'BMOT')]/2),list(schedule2evonsets_dict[(SCH,'BMOT')]/2+2)),label='BMOT').opts(color=TASK_COLORS['BMOT'], alpha=alpha, muted_alpha=0) * \
-             hv.VSpans((list(schedule2evonsets_dict[(SCH,'HOUS')]/2),list(schedule2evonsets_dict[(SCH,'HOUS')]/2+2)),label='HOUS').opts(color=TASK_COLORS['HOUS'], alpha=alpha, muted_alpha=0) * \
-             hv.VSpans((list(schedule2evonsets_dict[(SCH,'READ')]/2),list(schedule2evonsets_dict[(SCH,'READ')]/2+2)),label='READ').opts(color=TASK_COLORS['READ'], alpha=alpha, muted_alpha=0) * \
-             hv.VSpans((list(schedule2evonsets_dict[(SCH,'MUSI')]/2),list(schedule2evonsets_dict[(SCH,'MUSI')]/2+2)),label='MUSI').opts(color=TASK_COLORS['MUSI'], alpha=alpha, muted_alpha=0)
+def get_neural_event_hv_annots(schedule2evonsets_dict,SCH,tr_secs,alpha=0.5):
+    annots = hv.VSpans((list(schedule2evonsets_dict[(SCH,'FTAP')]*tr_secs/2),list((schedule2evonsets_dict[(SCH,'FTAP')]/2+2)*tr_secs)),label='FTAP').opts(color=TASK_COLORS['FTAP'], alpha=alpha, muted_alpha=0) * \
+             hv.VSpans((list(schedule2evonsets_dict[(SCH,'BMOT')]*tr_secs/2),list((schedule2evonsets_dict[(SCH,'BMOT')]/2+2)*tr_secs)),label='BMOT').opts(color=TASK_COLORS['BMOT'], alpha=alpha, muted_alpha=0) * \
+             hv.VSpans((list(schedule2evonsets_dict[(SCH,'HOUS')]*tr_secs/2),list((schedule2evonsets_dict[(SCH,'HOUS')]/2+2)*tr_secs)),label='HOUS').opts(color=TASK_COLORS['HOUS'], alpha=alpha, muted_alpha=0) * \
+             hv.VSpans((list(schedule2evonsets_dict[(SCH,'READ')]*tr_secs/2),list((schedule2evonsets_dict[(SCH,'READ')]/2+2)*tr_secs)),label='READ').opts(color=TASK_COLORS['READ'], alpha=alpha, muted_alpha=0) * \
+             hv.VSpans((list(schedule2evonsets_dict[(SCH,'MUSI')]*tr_secs/2),list((schedule2evonsets_dict[(SCH,'MUSI')]/2+2)*tr_secs)),label='MUSI').opts(color=TASK_COLORS['MUSI'], alpha=alpha, muted_alpha=0)
     return annots
 
 def get_hrf_event_onsets_offsets(SCH,TAP_LABEL,tr_secs,hrf_thr=0.2):
@@ -146,23 +146,27 @@ def _get_roits_schedule_avg(data, schedule, denoising, model=None, criteria=None
     output: xr.DataArray with the averaged data.
     """
     # Check if data is PFM input or output
-    if (model is None) | (criteria is None):
+    if (model is None) & (criteria is None):
         pfm_outputs = False
     else:
         pfm_outputs = True
         
     # Select dataarrays of interest from dataset provided as input
     if pfm_outputs:
-        selected_dataarrays = data.filter_by_attrs(schedule=schedule, denoising=denoising)
-    else:
         selected_dataarrays = data.filter_by_attrs(schedule=schedule, denoising=denoising, model=model, criteria=criteria)
-    
+    else:
+        selected_dataarrays = data.filter_by_attrs(schedule=schedule, denoising=denoising)
+        
     # Capping input data (if requested)
     if values_cap is not None:
+        #print(values_cap)
         for da_name,da in selected_dataarrays.items():
+            #print('BEFORE',selected_dataarrays[da_name].min().values,selected_dataarrays[da_name].max().values)
             selected_dataarrays[da_name] = xr.where(da < -values_cap , -values_cap, da)
+        for da_name,da in selected_dataarrays.items():
             selected_dataarrays[da_name] = xr.where(da > values_cap ,  values_cap, da)
-
+            #print('AFTER',selected_dataarrays[da_name].min().values,selected_dataarrays[da_name].max().values)
+            
     # Remove positive values (if requested) & stack in preparation for averaging
     stacked_dataarray = xr.concat([selected_dataarrays[name] for name in selected_dataarrays.data_vars], dim='scan')
     
@@ -253,7 +257,7 @@ def create_roits_figure(data,data_type,tr_secs,
     if data_type == 'BOLD':
         task_annot = get_hrf_event_hv_annots(schedule2evonsets_dict,schedule,tap_label,tr_secs,hrf_thr=0.2,alpha=0.25).opts(ylim=(0,Nrois))
     else:
-        task_annot = get_neural_event_hv_annots(schedule2evonsets_dict,schedule,tap_label,alpha=0.25).opts(ylim=(0,Nrois))
+        task_annot = get_neural_event_hv_annots(schedule2evonsets_dict,schedule,tr_secs, alpha=0.25).opts(ylim=(0,Nrois))
 
     # Construct Gridspec Elements
     # ===========================
@@ -286,7 +290,7 @@ def create_roits_figure(data,data_type,tr_secs,
     else:
         task_onsets, task_offsets = {},{}
         for task in TASKS:      
-            task_onsets[task]  = schedule2evonsets_dict[(this_scan_roits_xr.schedule,task)]/2
+            task_onsets[task]  = schedule2evonsets_dict[(schedule,task)]/2
             task_offsets[task] = task_onsets[task]+2
     # Get trace for the full scan            
     roits = data_df.groupby(y_coord_name).agg(root_sum_of_squares)[data_type]
