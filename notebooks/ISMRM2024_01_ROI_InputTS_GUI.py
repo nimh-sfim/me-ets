@@ -111,7 +111,7 @@ for sbj in tqdm(DATASET.keys(),desc='Subject'):
 # ***
 # # 4. Plot scan-level ROI Timeseries (Basic and MEICA denoised | Separate echoes)
 
-# +
+# + editable=true slideshow={"slide_type": ""}
 sbj_run_select       = pn.widgets.NestedSelect(options=DATASET, layout=pn.Row, levels=[{'name':'Subject','width':100},{'name':'Run','width':100}])
 denoising_select     = pn.widgets.Select(name='SPFM Input',options=['MEICA','Basic'], width=100)
 echo_select          = pn.widgets.Select(name='Echo',options=['E01','E02','E03'],value='E02', width=100)
@@ -129,8 +129,7 @@ rssts_config_card   = pn.Card(tseg_select, title='ROI-TS Configuration', width=2
 control_col = pn.Column(pn.layout.Divider(),scan_selection_card,pn.layout.Divider(),cplot_config_card,pn.layout.Divider(),rssts_config_card,pn.layout.Divider())
 
 
-# -
-
+# + editable=true slideshow={"slide_type": ""}
 @pn.depends(sbj_run_select, denoising_select, echo_select, top_roi_task_select, 
             only_positives_check, only_negatives_check,
             tseg_select)
@@ -181,13 +180,10 @@ sch_only_positives_check = pn.widgets.Checkbox(name='Remove neg. values prior to
 sch_only_negatives_check = pn.widgets.Checkbox(name='Remove pos. values prior to avg')
 value_cap_input          = pn.widgets.FloatInput(name='Cap value', value=10., width=200, description='Cap value prior to averaging. Entires with absolute values above this value will be capped to the value (keeping the correct sign)')
 
-top_roi_task_select     = pn.widgets.Select(name='ROI Selection (top 50)',options=['All ROIs']+TASKS, width=200, description='ROI Selection for Carpet plot. All ROIs or TOP 50 active ROIs for a given task')
-
 tseg_select             = pn.widgets.Select(name='Scan Segment Selection',options=['All'] + TASKS, width=200, description='Select the scan segment you want to be used for computing the ROI-RS scatter on the right')
 
 schedule_selection_card = pn.Card(schedule_select,pn.Row( denoising_select, echo_select),title='Schedule Selection', width=250)
 schedule_avg_card       = pn.Card(top_roi_task_select, pn.layout.Divider(), sch_only_positives_check, sch_only_negatives_check, pn.layout.Divider(), rwin_mode_cplot_select, rwin_dur_cplot_select, pn.layout.Divider(), value_cap_input, title='Schedule Avg. Configuration', width=250)
-cplot_config_card       = pn.Card(top_roi_task_select,pn.layout.Divider(), only_positives_check,only_negatives_check,title='CPlot Configuration', width=250)
 rssts_config_card       = pn.Card(tseg_select, title='ROI-TS Configuration', width=250)
 
 sch_control_col = pn.Column(pn.layout.Divider(),schedule_selection_card,pn.layout.Divider(),schedule_avg_card,pn.layout.Divider(),rssts_config_card,pn.layout.Divider())
@@ -227,3 +223,6 @@ dashboard2 = pn.Row(sch_control_col,sch_options_to_plot)
 
 # + editable=true slideshow={"slide_type": ""}
 dashboard2
+# -
+
+
