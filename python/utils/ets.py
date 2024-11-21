@@ -3,8 +3,10 @@ import numpy as np
 import xarray as xr
 from itertools import combinations
 import pandas as pd
+from scipy.stats import zscore
+from scipy.signal import find_peaks
+
 # Adapted from code originally provided by Josh Faskowizt
-import scipy as sp
 def get_ets(ts1, ts2=None, normalize=False): 
     """Creates edge timeseries
     input:     
@@ -55,3 +57,47 @@ def get_ets(ts1, ts2=None, normalize=False):
 
 def root_sum_of_squares(x):
     return np.sqrt(np.sum(x**2))
+
+def detect_RSSevents(time_series, Nreps=1000, offsets=None, pthr=0.05):
+    Ntp, Nchannels = time_series.shape
+    
+    if offsets is None:
+        offsets = np.arange(Ntp)
+
+    # Compute ets and rss
+    ets   = fcn_ets(time_series)
+    rssts = np.sqrt(np.sum(ets**2, axis=1))
+
+    # Generate null distribution with circshift
+    pcnt = np.zeros(Ntp)
+    for r in range(Nreps): #tqdm(range(Nreps), desc='Repetition'):
+        tsr = np.zeros((Ntp, Nchannels))
+        for n in range(Nchannels):
+            # Apply circshift using a random offset
+            shift = np.random.choice(offsets)
+            tsr[:, n] = np.roll(time_series[:, n], shift)
+        
+        etsr = fcn_ets(tsr)
+        rsstsr = np.sqrt(np.sum(etsr**2, axis=1))
+        pcnt += (rssts > np.max(rsstsr)).astype(int)
+    
+    # Compute p-values
+    pval = 1 - pcnt / Nreps
+
+    # Find peaks
+    fp_ts, _ = find_peaks(rssts)
+    
+    # Intersection of peaks and significant points
+    pk_inds = np.intersect1d(np.where(pval < pthr)[0], fp_ts)
+    pk_amp = rssts[pk_inds]
+    numpk = len(pk_inds)
+
+    return pk_inds, pk_amp, numpk, pval, pcnt
+
+def fcn_ets(ts):
+    _, n = ts.shape
+    z = zscore(ts, axis=0)  # z-score
+    u, v = np.triu_indices(n, k=1)  # get edges
+    a = z[:, u] * z[:, v]  # edge time series products
+    
+    return a
