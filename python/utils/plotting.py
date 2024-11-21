@@ -307,8 +307,8 @@ def create_roits_figure(data,data_type,tr_secs,
     else:
         task_onsets, task_offsets = {},{}
         for task in TASKS:      
-            task_onsets[task]  = schedule2evonsets_dict[(schedule,task)]/2
-            task_offsets[task] = task_onsets[task]+2
+            task_onsets[task]  = schedule2evonsets_dict[(schedule,task)]/2 * tr_secs
+            task_offsets[task] = task_onsets[task]+(2*tr_secs)
     # Get trace for the full scan            
     roits = data_df.groupby(y_coord_name).agg(root_sum_of_squares)[data_type]
     roits.name = 'ROI TS [All]'
@@ -440,7 +440,7 @@ def create_ets_figure(data,data_type,tr_secs,
     rssts = rssts.hvplot(x=x_coord_name, y='RSS TS', c='k', label='Full Brain',ylim=(rssts_min,rssts_max),width=int(0.8*width), height=int(0.5 * height)) * task_annot.opts(show_legend=False)
     # Second, we add traces per network (e.g., RSS only across ROIs part of a network)
     for nw in nw_names:
-        aux = data_df.loc[:,:,:,:,nw,:].groupby('Time [sec]').agg(root_sum_of_squares)['BOLD']
+        aux = data_df.loc[:,:,:,:,nw,:].groupby('Time [sec]').agg(root_sum_of_squares)[data_type]
         aux.name = nw
         rssts = rssts * aux.hvplot(c=nw_color_map[nw])
     rssts.opts(legend_opts={'location':'top_left','ncols':20,'label_text_font_size':'9pt'})
@@ -453,8 +453,8 @@ def create_ets_figure(data,data_type,tr_secs,
     else:
         task_onsets, task_offsets = {},{}
         for task in TASKS:      
-            task_onsets[task]  = schedule2evonsets_dict[(schedule,task)]/2
-            task_offsets[task] = task_onsets[task]+2
+            task_onsets[task]  = schedule2evonsets_dict[(schedule,task)]/2 * tr_secs
+            task_offsets[task] = task_onsets[task]+(2*tr_secs)
     # Get trace for the full scan            
     roits = data_df.groupby(y_coord_name).agg(root_sum_of_squares)[data_type]
     roits.name = 'Edge TS [All]'
@@ -507,7 +507,7 @@ def create_ets_figure(data,data_type,tr_secs,
     #aux.columns=['BOLD (a.u.)']
     #aux.reset_index(drop=True,inplace=True)
     #aux['Time [sec]'] = time_idx
-    seed_roi_ts_plot = abs(roi_ts).hvplot(x='Time [sec]',y='BOLD',c='k', label=seed_roi,width=int(0.8*width), height=int(0.5 * height)) * task_annot
+    seed_roi_ts_plot = abs(roi_ts).hvplot(x='Time [sec]',y=data_type,c='k', label=seed_roi,width=int(0.8*width), height=int(0.5 * height)) * task_annot
     seed_roi_ts_plot.opts(legend_opts={'location':'bottom_left','ncols':20,'label_text_font_size':'9pt'})
     
     # Construct Final Figure

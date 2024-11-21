@@ -193,8 +193,8 @@ def options_to_plot(sbj_run, denoising, echo, zscoring, only_positives, only_neg
     roi_ts.drop(['roi','dt'],axis=1, inplace=True)
     roi_ts.columns=['BOLD']
     roi_ts.reset_index(drop=True,inplace=True)
-    roi_ts['Time [sec]'] = 1.5 * np.arange(roi_ts.shape[0])
-    out = create_ets_figure(data,'BOLD',1.5,'tr','edge',seed_roi,echo,roi_ts,
+    roi_ts['Time [sec]'] = 2.0 * np.arange(roi_ts.shape[0])
+    out = create_ets_figure(data,'BOLD',2.0,'tr','edge',seed_roi,echo,roi_ts,
                       width=2000, height=500, cmap='RdBu_r', 
                       vmin=-5, vmax=5, 
                       rssts_min=None, rssts_max=None, 
@@ -321,7 +321,7 @@ def sch_options_to_plot(schedule, denoising, zscoring, echo, seed_roi,
     roi_ts_this_schedule.drop(['roi','dt'], axis=1, inplace=True)
     roi_ts_this_schedule.columns=['BOLD']
     roi_ts_this_schedule.reset_index(drop=True,inplace=True)
-    roi_ts_this_schedule['Time [sec]'] = np.arange(roi_ts_this_schedule.shape[0])*1.5
+    roi_ts_this_schedule['Time [sec]'] = np.arange(roi_ts_this_schedule.shape[0])* 2.0
     # Edge Selection
     all_edges = [tuple(e.split('-')) for e in list(ets_xrs.edge.values)]
     edge_selection = ['-'.join(e) for e in all_edges if seed_roi==e[0] or seed_roi==e[1]]
@@ -331,7 +331,7 @@ def sch_options_to_plot(schedule, denoising, zscoring, echo, seed_roi,
                             only_negatives=only_negatives, only_positives=only_positives, 
                             rwin_dur=rwin_dur, rwin_mode=rwin_mode,
                             values_cap = values_cap) 
-    out = create_ets_figure(sch_avg_data,'BOLD',1.5,'tr','edge',seed_roi,echo,roi_ts_this_schedule,
+    out = create_ets_figure(sch_avg_data,'BOLD',2.0,'tr','edge',seed_roi,echo,roi_ts_this_schedule,
                       width=2000, height=500, cmap='RdBu_r', 
                       vmin=-3.0, vmax=3.0, 
                       rssts_min=None, rssts_max=None, 

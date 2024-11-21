@@ -13,7 +13,7 @@
 #     name: me-ets_2024a
 # ---
 
-# + [markdown] editable=true slideshow={"slide_type": ""}
+# + [markdown] editable=true slideshow={"slide_type": ""} panel-layout={"width": 100, "height": 188.778, "visible": true}
 # ***
 # # Description
 #
@@ -25,7 +25,7 @@
 #
 # Dashboard two allows the exploration of data at the group level, as a function of task schedule.
 
-# + panel-layout={"width": 100, "height": 0, "visible": true}
+# + panel-layout={"width": 100, "height": 0, "visible": true} editable=true slideshow={"slide_type": ""}
 import sys
 sys.path.append('../python/')
 
@@ -105,7 +105,9 @@ for sbj in tqdm(DATASET.keys(),desc='Subject'):
                         mepfm_ts_xrs[(sbj,run,denoising,criteria,model)].attrs['criteria']  = criteria
                         mepfm_ts_xrs[(sbj,run,denoising,criteria,model)].attrs['model']     = model
 
+# + panel-layout={"width": 100, "height": 244.787, "visible": true}
 mepfm_ts_xrs
+# -
 
 available_traces = list(mepfm_ts_xrs.coords['dt'].values)
 
@@ -157,7 +159,7 @@ def options_to_plot(sbj_run, denoising, model, criteria, trace, task, only_posit
         data = xr.where(data < 0, data, np.nan)
     data.attrs = aux_attrs
     
-    out = create_roits_figure(data,available_traces_types[trace],1.5,'tr','roi',
+    out = create_roits_figure(data,available_traces_types[trace],2.0,'tr','roi',
                       width=2000, height=500, cmap=cplot_colormaps[available_traces_types[trace]], 
                       vmin=vmin, vmax=vmax, 
                       rssts_min=None, rssts_max=None, 
@@ -221,7 +223,7 @@ def sch_options_to_plot(schedule, denoising, model,criteria, trace, task,
     else:
         data = sch_avg_data.sel(roi=list(roi_info.sort_values(task,ascending=False)['ROI_Name'])[0:50])
 
-    out = create_roits_figure(data,available_traces_types[trace],1.5,'tr','roi',
+    out = create_roits_figure(data,available_traces_types[trace],2.0,'tr','roi',
                       width=2000, height=500, cmap=cplot_colormaps[available_traces_types[trace]], 
                       vmin=vmin, vmax=vmax, 
                       rssts_min=None, rssts_max=None, 
@@ -236,3 +238,6 @@ dashboard2 = pn.Row(sch_control_col,sch_options_to_plot)
 
 # + editable=true slideshow={"slide_type": ""}
 dashboard2
+# -
+
+

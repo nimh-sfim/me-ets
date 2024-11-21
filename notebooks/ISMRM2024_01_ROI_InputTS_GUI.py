@@ -149,7 +149,7 @@ def options_to_plot(sbj_run, denoising, echo, task, only_positives, only_negativ
         data = xr.where(data < 0, data, np.nan)
     data.attrs = aux_attrs
     
-    out = create_roits_figure(data,'BOLD',1.5,'tr','roi',
+    out = create_roits_figure(data,'BOLD',2.0,'tr','roi',
                       width=2000, height=500, cmap='RdBu_r', 
                       vmin=-0.02, vmax=0.02, 
                       rssts_min=None, rssts_max=None, 
@@ -208,7 +208,7 @@ def sch_options_to_plot(schedule, denoising, echo, task,
     else:
         data = sch_avg_data.sel(roi=list(roi_info.sort_values(task,ascending=False)['ROI_Name'])[0:50])
 
-    out = create_roits_figure(data,'BOLD',1.5,'tr','roi',
+    out = create_roits_figure(data,'BOLD',2.0,'tr','roi',
                       width=2000, height=500, cmap='RdBu_r', 
                       vmin=-0.02, vmax=0.02, 
                       rssts_min=None, rssts_max=None, 
@@ -223,6 +223,6 @@ dashboard2 = pn.Row(sch_control_col,sch_options_to_plot)
 
 # + editable=true slideshow={"slide_type": ""}
 dashboard2
-# -
+# + editable=true slideshow={"slide_type": ""}
 
 
