@@ -338,6 +338,10 @@ def create_roits_figure(data,data_type,tr_secs,
     out_figure = pn.Row(pn.Column(cplot,rssts),pn.Column(roits,pn.Spacer(styles=dict(background='green'))))
     return out_figure    
 
+# Functions to deal with ETS data
+# ===============================
+
+
 def create_ets_figure(data,data_type,tr_secs,
                       x_coord_name,y_coord_name, seed_roi,echo,roi_ts,
                       width=2000, height=500, cmap='RdBu_r', 
